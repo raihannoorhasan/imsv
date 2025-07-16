@@ -1,28 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useInventory } from '../contexts/InventoryContext';
-import { 
-  Plus, 
-  Search, 
-  Edit2, 
-  Trash2, 
-  Users, 
-  BookOpen, 
-  Calendar, 
-  DollarSign,
-  User,
-  GraduationCap,
-  Clock,
-  CheckCircle,
-  XCircle,
-  AlertCircle,
-  CreditCard,
-  Receipt,
-  UserPlus,
-  Filter,
-  X,
-  Eye,
-  FileText
-} from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Users, Calendar, DollarSign, BookOpen, User, CreditCard, AlertCircle } from 'lucide-react';
 import { Course, CourseBatch, Student, Enrollment, CoursePayment } from '../types';
 
 export function Courses() {
@@ -45,29 +23,24 @@ export function Courses() {
     updateEnrollment,
     deleteEnrollment,
     addCoursePayment,
-    generatePaymentVoucher
+    updateCoursePayment,
+    deleteCoursePayment
   } = useInventory();
 
   const [activeTab, setActiveTab] = useState<'courses' | 'batches' | 'students' | 'enrollments' | 'payments'>('courses');
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [showFilters, setShowFilters] = useState(false);
-
-  // Form states
   const [showCourseForm, setShowCourseForm] = useState(false);
   const [showBatchForm, setShowBatchForm] = useState(false);
   const [showStudentForm, setShowStudentForm] = useState(false);
   const [showEnrollmentForm, setShowEnrollmentForm] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [selectedEnrollment, setSelectedEnrollment] = useState<Enrollment | null>(null);
-
-  // Edit states
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [editingBatch, setEditingBatch] = useState<CourseBatch | null>(null);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [editingEnrollment, setEditingEnrollment] = useState<Enrollment | null>(null);
+  const [editingPayment, setEditingPayment] = useState<CoursePayment | null>(null);
+  const [enrollmentKey, setEnrollmentKey] = useState(0);
 
-  // Course form
   const [courseForm, setCourseForm] = useState({
     name: '',
     duration: 0,
@@ -82,7 +55,6 @@ export function Courses() {
     status: 'active' as Course['status']
   });
 
-  // Batch form
   const [batchForm, setBatchForm] = useState({
     courseId: '',
     batchName: '',
@@ -93,7 +65,6 @@ export function Courses() {
     status: 'upcoming' as CourseBatch['status']
   });
 
-  // Student form
   const [studentForm, setStudentForm] = useState({
     name: '',
     email: '',
@@ -103,80 +74,78 @@ export function Courses() {
     emergencyContact: ''
   });
 
-  // Enrollment form
   const [enrollmentForm, setEnrollmentForm] = useState({
     studentId: '',
     courseId: '',
     batchId: '',
-    includeAdmissionFee: false,
-    includeRegistrationFee: false,
-    includeExamFee: false,
-    initialPayment: 0,
-    paymentMethod: 'cash' as CoursePayment['paymentMethod']
+    totalFee: 0,
+    paidAmount: 0,
+    admissionFeePaid: false,
+    registrationFeePaid: false,
+    examFeePaid: false,
+    status: 'active' as Enrollment['status']
   });
 
-  // Payment form
   const [paymentForm, setPaymentForm] = useState({
     enrollmentId: '',
     studentId: '',
     paymentType: 'enrollment' as CoursePayment['paymentType'],
     amount: 0,
     paymentMethod: 'cash' as CoursePayment['paymentMethod'],
+    paymentDate: new Date().toISOString().split('T')[0],
+    voucherNumber: '',
     description: '',
     receivedBy: 'Admin'
   });
 
   const [newMaterial, setNewMaterial] = useState('');
 
-  // Filter functions
-  const filteredCourses = courses.filter(course => {
-    const matchesSearch = course.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         course.instructor.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || course.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Force re-render when enrollments change
+  useEffect(() => {
+    setEnrollmentKey(prev => prev + 1);
+  }, [enrollments.length]);
+
+  // Check if student is already enrolled in a batch for the same course
+  const isStudentAlreadyEnrolled = (studentId: string, courseId: string) => {
+    return enrollments.some(enrollment => 
+      enrollment.studentId === studentId && 
+      enrollment.courseId === courseId &&
+      enrollment.status === 'active'
+    );
+  };
+
+  const filteredCourses = courses.filter(course =>
+    course.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    course.instructor.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const filteredBatches = courseBatches.filter(batch => {
     const course = courses.find(c => c.id === batch.courseId);
-    const courseName = course ? course.name.toLowerCase() : '';
-    const matchesSearch = batch.batchName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         courseName.includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || batch.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    return course?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           batch.batchName.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
-  const filteredStudents = students.filter(student => {
-    const matchesSearch = student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         student.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         student.phone.includes(searchTerm);
-    return matchesSearch;
-  });
+  const filteredStudents = students.filter(student =>
+    student.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    student.email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const filteredEnrollments = enrollments.filter(enrollment => {
     const student = students.find(s => s.id === enrollment.studentId);
     const course = courses.find(c => c.id === enrollment.courseId);
-    const batch = courseBatches.find(b => b.id === enrollment.batchId);
-    
-    const studentName = student ? student.name.toLowerCase() : '';
-    const courseName = course ? course.name.toLowerCase() : '';
-    const batchName = batch ? batch.batchName.toLowerCase() : '';
-    
-    const matchesSearch = studentName.includes(searchTerm.toLowerCase()) ||
-                         courseName.includes(searchTerm.toLowerCase()) ||
-                         batchName.includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || enrollment.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    return student?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           course?.name.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
   const filteredPayments = coursePayments.filter(payment => {
     const student = students.find(s => s.id === payment.studentId);
-    const studentName = student ? student.name.toLowerCase() : '';
-    const matchesSearch = studentName.includes(searchTerm.toLowerCase()) ||
-                         payment.voucherNumber.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesSearch;
+    const enrollment = enrollments.find(e => e.id === payment.enrollmentId);
+    const course = enrollment ? courses.find(c => c.id === enrollment.courseId) : null;
+    return student?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           course?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           payment.voucherNumber.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
-  // Form handlers
   const handleCourseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingCourse) {
@@ -197,7 +166,7 @@ export function Courses() {
       endDate: new Date(batchForm.endDate),
       currentStudents: 0
     };
-    
+
     if (editingBatch) {
       updateCourseBatch(editingBatch.id, batchData);
       setEditingBatch(null);
@@ -214,7 +183,7 @@ export function Courses() {
       ...studentForm,
       dateOfBirth: studentForm.dateOfBirth ? new Date(studentForm.dateOfBirth) : undefined
     };
-    
+
     if (editingStudent) {
       updateStudent(editingStudent.id, studentData);
       setEditingStudent(null);
@@ -228,65 +197,28 @@ export function Courses() {
   const handleEnrollmentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Check if student is already enrolled in this course
+    if (isStudentAlreadyEnrolled(enrollmentForm.studentId, enrollmentForm.courseId)) {
+      alert('This student is already enrolled in a batch for this course.');
+      return;
+    }
+
     const course = courses.find(c => c.id === enrollmentForm.courseId);
     if (!course) return;
 
-    let totalFee = course.price;
-    let additionalFees = 0;
-
-    // Calculate additional fees
-    if (enrollmentForm.includeAdmissionFee) {
-      additionalFees += course.admissionFee;
-    }
-    if (enrollmentForm.includeRegistrationFee) {
-      additionalFees += course.registrationFee;
-    }
-    if (enrollmentForm.includeExamFee) {
-      additionalFees += course.examFee;
-    }
-
-    totalFee += additionalFees;
-
+    const totalFee = course.price + course.admissionFee + course.registrationFee + course.examFee;
     const enrollmentData = {
-      studentId: enrollmentForm.studentId,
-      courseId: enrollmentForm.courseId,
-      batchId: enrollmentForm.batchId,
+      ...enrollmentForm,
       totalFee,
-      paidAmount: enrollmentForm.initialPayment,
-      remainingAmount: totalFee - enrollmentForm.initialPayment,
-      admissionFeePaid: enrollmentForm.includeAdmissionFee,
-      registrationFeePaid: enrollmentForm.includeRegistrationFee,
-      examFeePaid: enrollmentForm.includeExamFee,
-      status: 'active' as Enrollment['status']
+      remainingAmount: totalFee - enrollmentForm.paidAmount
     };
 
-    addEnrollment(enrollmentData);
-
-    // Add initial payment if any
-    if (enrollmentForm.initialPayment > 0) {
-      setTimeout(() => {
-        const newEnrollments = JSON.parse(localStorage.getItem('enrollments') || '[]');
-        const latestEnrollment = newEnrollments[newEnrollments.length - 1];
-        
-        if (latestEnrollment) {
-          const paymentData = {
-            enrollmentId: latestEnrollment.id,
-            studentId: enrollmentForm.studentId,
-            paymentType: 'enrollment' as CoursePayment['paymentType'],
-            amount: enrollmentForm.initialPayment,
-            paymentMethod: enrollmentForm.paymentMethod,
-            paymentDate: new Date(),
-            voucherNumber: `PAY-${Date.now()}`,
-            description: 'Initial enrollment payment',
-            receivedBy: 'Admin'
-          };
-          
-          addCoursePayment(paymentData);
-          generatePaymentVoucher(paymentData.voucherNumber);
-        }
-      }, 100);
+    if (editingEnrollment) {
+      updateEnrollment(editingEnrollment.id, enrollmentData);
+      setEditingEnrollment(null);
+    } else {
+      addEnrollment(enrollmentData);
     }
-
     resetEnrollmentForm();
     setShowEnrollmentForm(false);
   };
@@ -294,36 +226,38 @@ export function Courses() {
   const handlePaymentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Get enrollment and student details for complete payment record
+    const enrollment = enrollments.find(e => e.id === paymentForm.enrollmentId);
+    const student = students.find(s => s.id === paymentForm.studentId);
+    const course = enrollment ? courses.find(c => c.id === enrollment.courseId) : null;
+    const batch = enrollment ? courseBatches.find(b => b.id === enrollment.batchId) : null;
+    
+    if (!enrollment || !student || !course || !batch) {
+      alert('Invalid enrollment or student data');
+      return;
+    }
+
+    // Generate voucher number if not provided
+    const voucherNumber = paymentForm.voucherNumber || `PAY-${Date.now()}`;
+    
     const paymentData = {
       ...paymentForm,
-      paymentDate: new Date(),
-      voucherNumber: `PAY-${Date.now()}`
+      paymentDate: new Date(paymentForm.paymentDate),
+      voucherNumber,
+      // Add additional context data for better tracking
+      description: paymentForm.description || `${paymentForm.paymentType} payment for ${course.name} - ${batch.batchName}`
     };
-    
-    addCoursePayment(paymentData);
-    generatePaymentVoucher(paymentData.voucherNumber);
-    
+
+    if (editingPayment) {
+      updateCoursePayment(editingPayment.id, paymentData);
+      setEditingPayment(null);
+    } else {
+      addCoursePayment(paymentData);
+    }
     resetPaymentForm();
     setShowPaymentForm(false);
-    setShowPaymentModal(false);
-    setSelectedEnrollment(null);
   };
 
-  const openPaymentModal = (enrollment: Enrollment) => {
-    setSelectedEnrollment(enrollment);
-    setPaymentForm({
-      enrollmentId: enrollment.id,
-      studentId: enrollment.studentId,
-      paymentType: 'enrollment',
-      amount: enrollment.remainingAmount,
-      paymentMethod: 'cash',
-      description: 'Remaining amount payment',
-      receivedBy: 'Admin'
-    });
-    setShowPaymentModal(true);
-  };
-
-  // Reset form functions
   const resetCourseForm = () => {
     setCourseForm({
       name: '',
@@ -368,11 +302,12 @@ export function Courses() {
       studentId: '',
       courseId: '',
       batchId: '',
-      includeAdmissionFee: false,
-      includeRegistrationFee: false,
-      includeExamFee: false,
-      initialPayment: 0,
-      paymentMethod: 'cash'
+      totalFee: 0,
+      paidAmount: 0,
+      admissionFeePaid: false,
+      registrationFeePaid: false,
+      examFeePaid: false,
+      status: 'active'
     });
   };
 
@@ -383,12 +318,30 @@ export function Courses() {
       paymentType: 'enrollment',
       amount: 0,
       paymentMethod: 'cash',
+      paymentDate: new Date().toISOString().split('T')[0],
+      voucherNumber: '',
       description: '',
       receivedBy: 'Admin'
     });
   };
 
-  // Edit handlers
+  const addMaterial = () => {
+    if (newMaterial.trim()) {
+      setCourseForm({
+        ...courseForm,
+        materials: [...courseForm.materials, newMaterial.trim()]
+      });
+      setNewMaterial('');
+    }
+  };
+
+  const removeMaterial = (index: number) => {
+    setCourseForm({
+      ...courseForm,
+      materials: courseForm.materials.filter((_, i) => i !== index)
+    });
+  };
+
   const handleEditCourse = (course: Course) => {
     setEditingCourse(course);
     setCourseForm({
@@ -434,43 +387,36 @@ export function Courses() {
     setShowStudentForm(true);
   };
 
-  // Utility functions
-  const addMaterial = () => {
-    if (newMaterial.trim()) {
-      setCourseForm({
-        ...courseForm,
-        materials: [...courseForm.materials, newMaterial.trim()]
-      });
-      setNewMaterial('');
-    }
-  };
-
-  const removeMaterial = (index: number) => {
-    setCourseForm({
-      ...courseForm,
-      materials: courseForm.materials.filter((_, i) => i !== index)
+  const handleEditEnrollment = (enrollment: Enrollment) => {
+    setEditingEnrollment(enrollment);
+    setEnrollmentForm({
+      studentId: enrollment.studentId,
+      courseId: enrollment.courseId,
+      batchId: enrollment.batchId,
+      totalFee: enrollment.totalFee,
+      paidAmount: enrollment.paidAmount,
+      admissionFeePaid: enrollment.admissionFeePaid,
+      registrationFeePaid: enrollment.registrationFeePaid,
+      examFeePaid: enrollment.examFeePaid,
+      status: enrollment.status
     });
+    setShowEnrollmentForm(true);
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-      case 'ongoing':
-        return 'bg-green-100 text-green-800';
-      case 'inactive':
-      case 'cancelled':
-        return 'bg-red-100 text-red-800';
-      case 'upcoming':
-        return 'bg-blue-100 text-blue-800';
-      case 'completed':
-        return 'bg-gray-100 text-gray-800';
-      case 'dropped':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'suspended':
-        return 'bg-orange-100 text-orange-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
-    }
+  const handleEditPayment = (payment: CoursePayment) => {
+    setEditingPayment(payment);
+    setPaymentForm({
+      enrollmentId: payment.enrollmentId,
+      studentId: payment.studentId,
+      paymentType: payment.paymentType,
+      amount: payment.amount,
+      paymentMethod: payment.paymentMethod,
+      paymentDate: new Date(payment.paymentDate).toISOString().split('T')[0],
+      voucherNumber: payment.voucherNumber,
+      description: payment.description || '',
+      receivedBy: payment.receivedBy
+    });
+    setShowPaymentForm(true);
   };
 
   const getCourseName = (courseId: string) => {
@@ -488,49 +434,121 @@ export function Courses() {
     return student ? student.name : 'Unknown Student';
   };
 
-  const calculateEnrollmentTotalFee = () => {
-    const course = courses.find(c => c.id === enrollmentForm.courseId);
-    if (!course) return 0;
-
-    let total = course.price;
-    if (enrollmentForm.includeAdmissionFee) total += course.admissionFee;
-    if (enrollmentForm.includeRegistrationFee) total += course.registrationFee;
-    if (enrollmentForm.includeExamFee) total += course.examFee;
-    
-    return total;
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active':
+      case 'ongoing':
+        return 'bg-green-100 text-green-800';
+      case 'completed':
+        return 'bg-blue-100 text-blue-800';
+      case 'upcoming':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'cancelled':
+      case 'dropped':
+        return 'bg-red-100 text-red-800';
+      case 'suspended':
+        return 'bg-orange-100 text-orange-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
   };
 
-  const clearFilters = () => {
-    setSearchTerm('');
-    setStatusFilter('all');
-  };
+  // Update enrollment form when course changes
+  useEffect(() => {
+    if (enrollmentForm.courseId) {
+      const course = courses.find(c => c.id === enrollmentForm.courseId);
+      if (course) {
+        const totalFee = course.price + course.admissionFee + course.registrationFee + course.examFee;
+        setEnrollmentForm(prev => ({ ...prev, totalFee }));
+      }
+    }
+  }, [enrollmentForm.courseId, courses]);
+
+  // Update payment form when enrollment changes
+  useEffect(() => {
+    if (paymentForm.enrollmentId) {
+      const enrollment = enrollments.find(e => e.id === paymentForm.enrollmentId);
+      if (enrollment) {
+        setPaymentForm(prev => ({ ...prev, studentId: enrollment.studentId }));
+      }
+    }
+  }, [paymentForm.enrollmentId, enrollments]);
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Course Management</h1>
-        <p className="text-gray-600 mt-2">Manage courses, batches, students, and enrollments</p>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Course Management</h1>
+          <p className="text-gray-600 mt-2">Manage courses, batches, students, and enrollments</p>
+        </div>
+        <div className="flex space-x-3">
+          {activeTab === 'courses' && (
+            <button
+              onClick={() => setShowCourseForm(true)}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700 transition-colors"
+            >
+              <Plus size={20} />
+              <span>Add Course</span>
+            </button>
+          )}
+          {activeTab === 'batches' && (
+            <button
+              onClick={() => setShowBatchForm(true)}
+              className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-green-700 transition-colors"
+            >
+              <Plus size={20} />
+              <span>Add Batch</span>
+            </button>
+          )}
+          {activeTab === 'students' && (
+            <button
+              onClick={() => setShowStudentForm(true)}
+              className="bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-purple-700 transition-colors"
+            >
+              <Plus size={20} />
+              <span>Add Student</span>
+            </button>
+          )}
+          {activeTab === 'enrollments' && (
+            <button
+              onClick={() => setShowEnrollmentForm(true)}
+              className="bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-orange-700 transition-colors"
+            >
+              <Plus size={20} />
+              <span>New Enrollment</span>
+            </button>
+          )}
+          {activeTab === 'payments' && (
+            <button
+              onClick={() => setShowPaymentForm(true)}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-indigo-700 transition-colors"
+            >
+              <Plus size={20} />
+              <span>Add Payment</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Navigation Tabs */}
+      {/* Tabs */}
       <div className="bg-white rounded-lg shadow-sm border mb-6">
-        <div className="flex border-b overflow-x-auto">
+        <div className="flex border-b">
           {[
             { id: 'courses', label: 'Courses', icon: BookOpen },
             { id: 'batches', label: 'Batches', icon: Calendar },
-            { id: 'students', label: 'Students', icon: Users },
-            { id: 'enrollments', label: 'Enrollments', icon: GraduationCap },
-            { id: 'payments', label: 'Payments', icon: DollarSign }
+            { id: 'students', label: 'Students', icon: User },
+            { id: 'enrollments', label: 'Enrollments', icon: Users },
+            { id: 'payments', label: 'Payments', icon: CreditCard }
           ].map((tab) => {
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center space-x-2 px-6 py-4 font-medium whitespace-nowrap ${
+                className={`flex items-center space-x-2 px-6 py-3 font-medium ${
                   activeTab === tab.id
-                    ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    ? 'text-blue-600 border-b-2 border-blue-600'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 <Icon size={20} />
@@ -541,196 +559,57 @@ export function Courses() {
         </div>
       </div>
 
-      {/* Search and Filters */}
+      {/* Search */}
       <div className="bg-white rounded-lg shadow-sm border p-4 mb-6">
-        <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-          <div className="flex-1">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-              <input
-                type="text"
-                placeholder={`Search ${activeTab}...`}
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              {searchTerm && (
-                <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          </div>
-          
-          {(activeTab === 'courses' || activeTab === 'batches' || activeTab === 'enrollments') && (
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              <option value="all">All Status</option>
-              {activeTab === 'courses' && (
-                <>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </>
-              )}
-              {activeTab === 'batches' && (
-                <>
-                  <option value="upcoming">Upcoming</option>
-                  <option value="ongoing">Ongoing</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </>
-              )}
-              {activeTab === 'enrollments' && (
-                <>
-                  <option value="active">Active</option>
-                  <option value="completed">Completed</option>
-                  <option value="dropped">Dropped</option>
-                  <option value="suspended">Suspended</option>
-                </>
-              )}
-            </select>
-          )}
-          
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="flex items-center space-x-2 px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-          >
-            <Filter size={16} />
-            <span>Filters</span>
-          </button>
-          
-          {(searchTerm || statusFilter !== 'all') && (
-            <button
-              onClick={clearFilters}
-              className="px-4 py-2 text-blue-600 hover:text-blue-800"
-            >
-              Clear
-            </button>
-          )}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+          <input
+            type="text"
+            placeholder={`Search ${activeTab}...`}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
         </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex justify-end mb-6">
-        {activeTab === 'courses' && (
-          <button
-            onClick={() => setShowCourseForm(true)}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-blue-700 transition-colors shadow-sm"
-          >
-            <Plus size={20} />
-            <span>Add Course</span>
-          </button>
-        )}
-        {activeTab === 'batches' && (
-          <button
-            onClick={() => setShowBatchForm(true)}
-            className="bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-green-700 transition-colors shadow-sm"
-          >
-            <Plus size={20} />
-            <span>Add Batch</span>
-          </button>
-        )}
-        {activeTab === 'students' && (
-          <button
-            onClick={() => setShowStudentForm(true)}
-            className="bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-purple-700 transition-colors shadow-sm"
-          >
-            <UserPlus size={20} />
-            <span>Add Student</span>
-          </button>
-        )}
-        {activeTab === 'enrollments' && (
-          <button
-            onClick={() => setShowEnrollmentForm(true)}
-            className="bg-orange-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-orange-700 transition-colors shadow-sm"
-          >
-            <GraduationCap size={20} />
-            <span>New Enrollment</span>
-          </button>
-        )}
-        {activeTab === 'payments' && (
-          <button
-            onClick={() => setShowPaymentForm(true)}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 hover:bg-indigo-700 transition-colors shadow-sm"
-          >
-            <CreditCard size={20} />
-            <span>Add Payment</span>
-          </button>
-        )}
       </div>
 
       {/* Content based on active tab */}
       {activeTab === 'courses' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredCourses.map((course) => (
-            <div key={course.id} className="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow">
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">{course.name}</h3>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(course.status)}`}>
-                      {course.status}
-                    </span>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleEditCourse(course)}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      onClick={() => deleteCourse(course.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+            <div key={course.id} className="bg-white rounded-lg shadow-sm border p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{course.name}</h3>
+                  <p className="text-sm text-gray-600">by {course.instructor}</p>
                 </div>
-                
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-2 text-gray-600">
-                    <Clock size={16} />
-                    <span className="text-sm">{course.duration} hours</span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-gray-600">
-                    <User size={16} />
-                    <span className="text-sm">{course.instructor}</span>
-                  </div>
-                  <div className="flex items-center space-x-2 text-gray-600">
-                    <Users size={16} />
-                    <span className="text-sm">Max {course.maxStudents} students</span>
-                  </div>
-                </div>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(course.status)}`}>
+                  {course.status}
+                </span>
+              </div>
+              
+              <div className="space-y-2 mb-4">
+                <p className="text-sm text-gray-600">Duration: {course.duration} hours</p>
+                <p className="text-sm text-gray-600">Max Students: {course.maxStudents}</p>
+                <p className="text-sm text-gray-600">Course Fee: ${course.price}</p>
+                <p className="text-sm text-gray-600">Total Fees: ${course.price + course.admissionFee + course.registrationFee + course.examFee}</p>
+              </div>
 
-                <div className="mt-4 pt-4 border-t">
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-gray-600">Course Fee</p>
-                      <p className="font-semibold text-green-600">${course.price}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Admission Fee</p>
-                      <p className="font-semibold text-blue-600">${course.admissionFee}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Registration Fee</p>
-                      <p className="font-semibold text-purple-600">${course.registrationFee}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-600">Exam Fee</p>
-                      <p className="font-semibold text-orange-600">${course.examFee}</p>
-                    </div>
-                  </div>
-                </div>
+              <p className="text-sm text-gray-700 mb-4">{course.description}</p>
 
-                <p className="text-gray-600 text-sm mt-4 line-clamp-2">{course.description}</p>
+              <div className="flex justify-end space-x-2">
+                <button
+                  onClick={() => handleEditCourse(course)}
+                  className="text-blue-600 hover:text-blue-800"
+                >
+                  <Edit2 size={16} />
+                </button>
+                <button
+                  onClick={() => deleteCourse(course.id)}
+                  className="text-red-600 hover:text-red-800"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             </div>
           ))}
@@ -745,8 +624,8 @@ export function Courses() {
                 <tr>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Batch Name</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Course</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Duration</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Schedule</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Duration</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Students</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Status</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Actions</th>
@@ -755,17 +634,13 @@ export function Courses() {
               <tbody className="divide-y divide-gray-200">
                 {filteredBatches.map((batch) => (
                   <tr key={batch.id} className="hover:bg-gray-50">
-                    <td className="py-3 px-4 font-medium text-gray-900">{batch.batchName}</td>
+                    <td className="py-3 px-4 font-medium">{batch.batchName}</td>
                     <td className="py-3 px-4">{getCourseName(batch.courseId)}</td>
-                    <td className="py-3 px-4 text-sm text-gray-600">
+                    <td className="py-3 px-4 text-sm">{batch.schedule}</td>
+                    <td className="py-3 px-4 text-sm">
                       {new Date(batch.startDate).toLocaleDateString()} - {new Date(batch.endDate).toLocaleDateString()}
                     </td>
-                    <td className="py-3 px-4 text-sm text-gray-600">{batch.schedule}</td>
-                    <td className="py-3 px-4">
-                      <span className="text-sm">
-                        {batch.currentStudents}/{batch.maxStudents}
-                      </span>
-                    </td>
+                    <td className="py-3 px-4">{batch.currentStudents}/{batch.maxStudents}</td>
                     <td className="py-3 px-4">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(batch.status)}`}>
                         {batch.status}
@@ -798,51 +673,43 @@ export function Courses() {
       {activeTab === 'students' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredStudents.map((student) => (
-            <div key={student.id} className="bg-white rounded-lg shadow-sm border hover:shadow-md transition-shadow">
-              <div className="p-6">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">{student.name}</h3>
-                    <p className="text-sm text-gray-500">
-                      Student since {new Date(student.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => handleEditStudent(student)}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      <Edit2 size={16} />
-                    </button>
-                    <button
-                      onClick={() => deleteStudent(student.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-                
-                <div className="space-y-2">
+            <div key={student.id} className="bg-white rounded-lg shadow-sm border p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">{student.name}</h3>
                   <p className="text-sm text-gray-600">{student.email}</p>
-                  <p className="text-sm text-gray-600">{student.phone}</p>
-                  {student.dateOfBirth && (
-                    <p className="text-sm text-gray-600">
-                      DOB: {new Date(student.dateOfBirth).toLocaleDateString()}
-                    </p>
-                  )}
-                  {student.emergencyContact && (
-                    <p className="text-sm text-gray-600">
-                      Emergency: {student.emergencyContact}
-                    </p>
-                  )}
                 </div>
-
-                <div className="mt-4 pt-4 border-t">
+              </div>
+              
+              <div className="space-y-2 mb-4">
+                <p className="text-sm text-gray-600">Phone: {student.phone}</p>
+                {student.dateOfBirth && (
                   <p className="text-sm text-gray-600">
-                    Enrollments: {enrollments.filter(e => e.studentId === student.id).length}
+                    DOB: {new Date(student.dateOfBirth).toLocaleDateString()}
                   </p>
-                </div>
+                )}
+                {student.emergencyContact && (
+                  <p className="text-sm text-gray-600">Emergency: {student.emergencyContact}</p>
+                )}
+              </div>
+
+              {student.address && (
+                <p className="text-sm text-gray-700 mb-4">{student.address}</p>
+              )}
+
+              <div className="flex justify-end space-x-2">
+                <button
+                  onClick={() => handleEditStudent(student)}
+                  className="text-blue-600 hover:text-blue-800"
+                >
+                  <Edit2 size={16} />
+                </button>
+                <button
+                  onClick={() => deleteStudent(student.id)}
+                  className="text-red-600 hover:text-red-800"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             </div>
           ))}
@@ -850,7 +717,7 @@ export function Courses() {
       )}
 
       {activeTab === 'enrollments' && (
-        <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+        <div key={enrollmentKey} className="bg-white rounded-lg shadow-sm border overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50">
@@ -861,7 +728,6 @@ export function Courses() {
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Total Fee</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Paid</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Remaining</th>
-                  <th className="text-left py-3 px-4 font-medium text-gray-900">Fee Status</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Status</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Actions</th>
                 </tr>
@@ -869,25 +735,12 @@ export function Courses() {
               <tbody className="divide-y divide-gray-200">
                 {filteredEnrollments.map((enrollment) => (
                   <tr key={enrollment.id} className="hover:bg-gray-50">
-                    <td className="py-3 px-4 font-medium text-gray-900">
-                      {getStudentName(enrollment.studentId)}
-                    </td>
+                    <td className="py-3 px-4">{getStudentName(enrollment.studentId)}</td>
                     <td className="py-3 px-4">{getCourseName(enrollment.courseId)}</td>
                     <td className="py-3 px-4">{getBatchName(enrollment.batchId)}</td>
-                    <td className="py-3 px-4 font-medium">${enrollment.totalFee.toFixed(2)}</td>
-                    <td className="py-3 px-4 text-green-600 font-medium">
-                      ${enrollment.paidAmount.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4 text-red-600 font-medium">
-                      ${enrollment.remainingAmount.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex space-x-1">
-                        <div className={`w-3 h-3 rounded-full ${enrollment.admissionFeePaid ? 'bg-green-500' : 'bg-gray-300'}`} title="Admission Fee"></div>
-                        <div className={`w-3 h-3 rounded-full ${enrollment.registrationFeePaid ? 'bg-blue-500' : 'bg-gray-300'}`} title="Registration Fee"></div>
-                        <div className={`w-3 h-3 rounded-full ${enrollment.examFeePaid ? 'bg-purple-500' : 'bg-gray-300'}`} title="Exam Fee"></div>
-                      </div>
-                    </td>
+                    <td className="py-3 px-4">${enrollment.totalFee.toFixed(2)}</td>
+                    <td className="py-3 px-4 text-green-600">${enrollment.paidAmount.toFixed(2)}</td>
+                    <td className="py-3 px-4 text-red-600">${enrollment.remainingAmount.toFixed(2)}</td>
                     <td className="py-3 px-4">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(enrollment.status)}`}>
                         {enrollment.status}
@@ -895,19 +748,15 @@ export function Courses() {
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex space-x-2">
-                        {enrollment.remainingAmount > 0 && (
-                          <button
-                            onClick={() => openPaymentModal(enrollment)}
-                            className="text-green-600 hover:text-green-800"
-                            title="Make Payment"
-                          >
-                            <CreditCard size={16} />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleEditEnrollment(enrollment)}
+                          className="text-blue-600 hover:text-blue-800"
+                        >
+                          <Edit2 size={16} />
+                        </button>
                         <button
                           onClick={() => deleteEnrollment(enrollment.id)}
                           className="text-red-600 hover:text-red-800"
-                          title="Delete Enrollment"
                         >
                           <Trash2 size={16} />
                         </button>
@@ -929,6 +778,8 @@ export function Courses() {
                 <tr>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Voucher #</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Student</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Course</th>
+                  <th className="text-left py-3 px-4 font-medium text-gray-900">Batch</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Payment Type</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Amount</th>
                   <th className="text-left py-3 px-4 font-medium text-gray-900">Method</th>
@@ -938,37 +789,45 @@ export function Courses() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {filteredPayments.map((payment) => (
-                  <tr key={payment.id} className="hover:bg-gray-50">
-                    <td className="py-3 px-4 font-mono text-sm">{payment.voucherNumber}</td>
-                    <td className="py-3 px-4">{getStudentName(payment.studentId)}</td>
-                    <td className="py-3 px-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
-                        payment.paymentType === 'enrollment' ? 'bg-green-100 text-green-800' :
-                        payment.paymentType === 'registration' ? 'bg-blue-100 text-blue-800' :
-                        'bg-purple-100 text-purple-800'
-                      }`}>
-                        {payment.paymentType}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-medium text-green-600">
-                      ${payment.amount.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4 capitalize">{payment.paymentMethod}</td>
-                    <td className="py-3 px-4 text-sm">
-                      {new Date(payment.paymentDate).toLocaleDateString()}
-                    </td>
-                    <td className="py-3 px-4">{payment.receivedBy}</td>
-                    <td className="py-3 px-4">
-                      <button
-                        className="text-blue-600 hover:text-blue-800"
-                        title="View Receipt"
-                      >
-                        <Receipt size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {filteredPayments.map((payment) => {
+                  const enrollment = enrollments.find(e => e.id === payment.enrollmentId);
+                  const course = enrollment ? courses.find(c => c.id === enrollment.courseId) : null;
+                  const batch = enrollment ? courseBatches.find(b => b.id === enrollment.batchId) : null;
+                  
+                  return (
+                    <tr key={payment.id} className="hover:bg-gray-50">
+                      <td className="py-3 px-4 font-mono text-sm">{payment.voucherNumber}</td>
+                      <td className="py-3 px-4">{getStudentName(payment.studentId)}</td>
+                      <td className="py-3 px-4">{course?.name || 'Unknown'}</td>
+                      <td className="py-3 px-4">{batch?.batchName || 'Unknown'}</td>
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 capitalize">
+                          {payment.paymentType}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 font-medium text-green-600">${payment.amount.toFixed(2)}</td>
+                      <td className="py-3 px-4 capitalize">{payment.paymentMethod}</td>
+                      <td className="py-3 px-4 text-sm">{new Date(payment.paymentDate).toLocaleDateString()}</td>
+                      <td className="py-3 px-4">{payment.receivedBy}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleEditPayment(payment)}
+                            className="text-blue-600 hover:text-blue-800"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => deleteCoursePayment(payment.id)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -995,65 +854,21 @@ export function Courses() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Duration (hours)</label>
-                  <input
-                    type="number"
-                    value={courseForm.duration}
-                    onChange={(e) => setCourseForm({ ...courseForm, duration: parseInt(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Course Fee ($)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={courseForm.price}
-                    onChange={(e) => setCourseForm({ ...courseForm, price: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Admission Fee ($)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={courseForm.admissionFee}
-                    onChange={(e) => setCourseForm({ ...courseForm, admissionFee: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Registration Fee ($)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={courseForm.registrationFee}
-                    onChange={(e) => setCourseForm({ ...courseForm, registrationFee: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Exam Fee ($)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={courseForm.examFee}
-                    onChange={(e) => setCourseForm({ ...courseForm, examFee: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                </div>
-                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Instructor</label>
                   <input
                     type="text"
                     value={courseForm.instructor}
                     onChange={(e) => setCourseForm({ ...courseForm, instructor: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Duration (hours)</label>
+                  <input
+                    type="number"
+                    value={courseForm.duration}
+                    onChange={(e) => setCourseForm({ ...courseForm, duration: parseInt(e.target.value) || 0 })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     required
                   />
@@ -1068,6 +883,50 @@ export function Courses() {
                     required
                   />
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Course Price</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={courseForm.price}
+                    onChange={(e) => setCourseForm({ ...courseForm, price: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Admission Fee</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={courseForm.admissionFee}
+                    onChange={(e) => setCourseForm({ ...courseForm, admissionFee: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Registration Fee</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={courseForm.registrationFee}
+                    onChange={(e) => setCourseForm({ ...courseForm, registrationFee: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Exam Fee</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={courseForm.examFee}
+                    onChange={(e) => setCourseForm({ ...courseForm, examFee: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
               </div>
               
               <div>
@@ -1077,12 +936,11 @@ export function Courses() {
                   onChange={(e) => setCourseForm({ ...courseForm, description: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   rows={3}
-                  required
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Course Materials</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Materials</label>
                 <div className="flex space-x-2 mb-2">
                   <input
                     type="text"
@@ -1106,7 +964,7 @@ export function Courses() {
                   </button>
                 </div>
                 {courseForm.materials.length > 0 && (
-                  <div className="bg-gray-50 rounded-lg p-3 max-h-32 overflow-y-auto">
+                  <div className="bg-gray-50 rounded-lg p-3">
                     {courseForm.materials.map((material, index) => (
                       <div key={index} className="flex items-center justify-between py-1">
                         <span className="text-sm text-gray-700">• {material}</span>
@@ -1339,7 +1197,6 @@ export function Courses() {
                   onChange={(e) => setStudentForm({ ...studentForm, address: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   rows={3}
-                  required
                 />
               </div>
 
@@ -1371,9 +1228,10 @@ export function Courses() {
       {showEnrollmentForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-2xl m-4">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">New Student Enrollment</h2>
-            <form onSubmit={handleEnrollmentSubmit} className="space-y-6">
-              {/* Student and Course Selection */}
+            <h2 className="text-xl font-bold text-gray-900 mb-4">
+              {editingEnrollment ? 'Edit Enrollment' : 'New Enrollment'}
+            </h2>
+            <form onSubmit={handleEnrollmentSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Student</label>
@@ -1393,9 +1251,7 @@ export function Courses() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">Course</label>
                   <select
                     value={enrollmentForm.courseId}
-                    onChange={(e) => {
-                      setEnrollmentForm({ ...enrollmentForm, courseId: e.target.value, batchId: '' });
-                    }}
+                    onChange={(e) => setEnrollmentForm({ ...enrollmentForm, courseId: e.target.value, batchId: '' })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     required
                   >
@@ -1405,165 +1261,72 @@ export function Courses() {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Batch</label>
+                  <select
+                    value={enrollmentForm.batchId}
+                    onChange={(e) => setEnrollmentForm({ ...enrollmentForm, batchId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                    disabled={!enrollmentForm.courseId}
+                  >
+                    <option value="">Select Batch</option>
+                    {courseBatches
+                      .filter(batch => batch.courseId === enrollmentForm.courseId && batch.status !== 'completed')
+                      .map(batch => (
+                        <option key={batch.id} value={batch.id}>
+                          {batch.batchName} ({batch.currentStudents}/{batch.maxStudents})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                  <select
+                    value={enrollmentForm.status}
+                    onChange={(e) => setEnrollmentForm({ ...enrollmentForm, status: e.target.value as Enrollment['status'] })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="active">Active</option>
+                    <option value="completed">Completed</option>
+                    <option value="dropped">Dropped</option>
+                    <option value="suspended">Suspended</option>
+                  </select>
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Batch</label>
-                <select
-                  value={enrollmentForm.batchId}
-                  onChange={(e) => setEnrollmentForm({ ...enrollmentForm, batchId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                  disabled={!enrollmentForm.courseId}
-                >
-                  <option value="">Select Batch</option>
-                  {courseBatches
-                    .filter(batch => batch.courseId === enrollmentForm.courseId && batch.status !== 'completed')
-                    .map(batch => (
-                      <option key={batch.id} value={batch.id}>
-                        {batch.batchName} ({batch.currentStudents}/{batch.maxStudents} students)
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              {/* Fee Structure */}
               {enrollmentForm.courseId && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Fee Structure</h3>
-                  {(() => {
-                    const course = courses.find(c => c.id === enrollmentForm.courseId);
-                    if (!course) return null;
-                    
-                    return (
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-gray-700">Course Fee</span>
-                          <span className="font-semibold text-green-600">${course.price.toFixed(2)}</span>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={enrollmentForm.includeAdmissionFee}
-                                onChange={(e) => setEnrollmentForm({ 
-                                  ...enrollmentForm, 
-                                  includeAdmissionFee: e.target.checked 
-                                })}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span className="text-gray-700">Admission Fee</span>
-                            </label>
-                            <span className="font-semibold text-blue-600">${course.admissionFee.toFixed(2)}</span>
-                          </div>
-                          
-                          <div className="flex items-center justify-between">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={enrollmentForm.includeRegistrationFee}
-                                onChange={(e) => setEnrollmentForm({ 
-                                  ...enrollmentForm, 
-                                  includeRegistrationFee: e.target.checked 
-                                })}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span className="text-gray-700">Registration Fee</span>
-                            </label>
-                            <span className="font-semibold text-purple-600">${course.registrationFee.toFixed(2)}</span>
-                          </div>
-                          
-                          <div className="flex items-center justify-between">
-                            <label className="flex items-center space-x-2">
-                              <input
-                                type="checkbox"
-                                checked={enrollmentForm.includeExamFee}
-                                onChange={(e) => setEnrollmentForm({ 
-                                  ...enrollmentForm, 
-                                  includeExamFee: e.target.checked 
-                                })}
-                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                              />
-                              <span className="text-gray-700">Exam Fee</span>
-                            </label>
-                            <span className="font-semibold text-orange-600">${course.examFee.toFixed(2)}</span>
-                          </div>
-                        </div>
-                        
-                        <div className="border-t pt-3">
-                          <div className="flex items-center justify-between text-lg font-bold">
-                            <span className="text-gray-900">Total Fee</span>
-                            <span className="text-blue-600">${calculateEnrollmentTotalFee().toFixed(2)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-blue-900 mb-2">Fee Structure</h4>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>Course Fee: ${courses.find(c => c.id === enrollmentForm.courseId)?.price || 0}</div>
+                    <div>Admission Fee: ${courses.find(c => c.id === enrollmentForm.courseId)?.admissionFee || 0}</div>
+                    <div>Registration Fee: ${courses.find(c => c.id === enrollmentForm.courseId)?.registrationFee || 0}</div>
+                    <div>Exam Fee: ${courses.find(c => c.id === enrollmentForm.courseId)?.examFee || 0}</div>
+                    <div className="font-medium text-blue-900 col-span-2">
+                      Total Fee: ${enrollmentForm.totalFee}
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {/* Initial Payment */}
-              <div className="bg-blue-50 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Initial Payment</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Payment Amount ($)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max={calculateEnrollmentTotalFee()}
-                      value={enrollmentForm.initialPayment}
-                      onChange={(e) => setEnrollmentForm({ 
-                        ...enrollmentForm, 
-                        initialPayment: parseFloat(e.target.value) || 0 
-                      })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-                    <select
-                      value={enrollmentForm.paymentMethod}
-                      onChange={(e) => setEnrollmentForm({ 
-                        ...enrollmentForm, 
-                        paymentMethod: e.target.value as CoursePayment['paymentMethod'] 
-                      })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    >
-                      <option value="cash">Cash</option>
-                      <option value="card">Card</option>
-                      <option value="transfer">Bank Transfer</option>
-                      <option value="cheque">Cheque</option>
-                    </select>
-                  </div>
+              {/* Validation Warning */}
+              {enrollmentForm.studentId && enrollmentForm.courseId && 
+               isStudentAlreadyEnrolled(enrollmentForm.studentId, enrollmentForm.courseId) && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center space-x-2">
+                  <AlertCircle className="w-5 h-5 text-red-500" />
+                  <span className="text-red-700 text-sm">
+                    This student is already enrolled in a batch for this course.
+                  </span>
                 </div>
-                
-                {enrollmentForm.initialPayment > 0 && (
-                  <div className="mt-3 p-3 bg-white rounded border">
-                    <div className="flex justify-between text-sm">
-                      <span>Paying Now:</span>
-                      <span className="font-semibold text-green-600">
-                        ${enrollmentForm.initialPayment.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span>Remaining:</span>
-                      <span className="font-semibold text-red-600">
-                        ${(calculateEnrollmentTotalFee() - enrollmentForm.initialPayment).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
+              )}
 
               <div className="flex justify-end space-x-4 pt-4">
                 <button
                   type="button"
                   onClick={() => {
                     setShowEnrollmentForm(false);
+                    setEditingEnrollment(null);
                     resetEnrollmentForm();
                   }}
                   className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -1573,8 +1336,10 @@ export function Courses() {
                 <button
                   type="submit"
                   className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+                  disabled={enrollmentForm.studentId && enrollmentForm.courseId && 
+                           isStudentAlreadyEnrolled(enrollmentForm.studentId, enrollmentForm.courseId)}
                 >
-                  Enroll Student
+                  {editingEnrollment ? 'Update Enrollment' : 'Create Enrollment'}
                 </button>
               </div>
             </form>
@@ -1583,138 +1348,145 @@ export function Courses() {
       )}
 
       {/* Payment Form Modal */}
-      {(showPaymentForm || showPaymentModal) && (
+      {showPaymentForm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md m-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl m-4">
             <h2 className="text-xl font-bold text-gray-900 mb-4">
-              {showPaymentModal ? 'Make Payment' : 'Add Payment'}
+              {editingPayment ? 'Edit Payment' : 'Add Payment'}
             </h2>
             <form onSubmit={handlePaymentSubmit} className="space-y-4">
-              {!showPaymentModal && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Student</label>
-                    <select
-                      value={paymentForm.studentId}
-                      onChange={(e) => {
-                        const studentId = e.target.value;
-                        const studentEnrollments = enrollments.filter(en => en.studentId === studentId);
-                        setPaymentForm({ 
-                          ...paymentForm, 
-                          studentId,
-                          enrollmentId: studentEnrollments.length > 0 ? studentEnrollments[0].id : ''
-                        });
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                    >
-                      <option value="">Select Student</option>
-                      {students.map(student => (
-                        <option key={student.id} value={student.id}>{student.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Enrollment</label>
-                    <select
-                      value={paymentForm.enrollmentId}
-                      onChange={(e) => setPaymentForm({ ...paymentForm, enrollmentId: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      required
-                      disabled={!paymentForm.studentId}
-                    >
-                      <option value="">Select Enrollment</option>
-                      {enrollments
-                        .filter(enrollment => enrollment.studentId === paymentForm.studentId)
-                        .map(enrollment => (
-                          <option key={enrollment.id} value={enrollment.id}>
-                            {getCourseName(enrollment.courseId)} - {getBatchName(enrollment.batchId)}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                </>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Payment Type</label>
-                <select
-                  value={paymentForm.paymentType}
-                  onChange={(e) => setPaymentForm({ 
-                    ...paymentForm, 
-                    paymentType: e.target.value as CoursePayment['paymentType'] 
-                  })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={showPaymentModal}
-                >
-                  <option value="enrollment">Enrollment Fee</option>
-                  <option value="registration">Registration Fee</option>
-                  <option value="exam">Exam Fee</option>
-                </select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Enrollment</label>
+                  <select
+                    value={paymentForm.enrollmentId}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, enrollmentId: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  >
+                    <option value="">Select Enrollment</option>
+                    {enrollments.filter(e => e.status === 'active').map(enrollment => {
+                      const student = students.find(s => s.id === enrollment.studentId);
+                      const course = courses.find(c => c.id === enrollment.courseId);
+                      const batch = courseBatches.find(b => b.id === enrollment.batchId);
+                      return (
+                        <option key={enrollment.id} value={enrollment.id}>
+                          {student?.name} - {course?.name} ({batch?.batchName})
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Type</label>
+                  <select
+                    value={paymentForm.paymentType}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentType: e.target.value as CoursePayment['paymentType'] })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="enrollment">Enrollment Fee</option>
+                    <option value="admission">Admission Fee</option>
+                    <option value="registration">Registration Fee</option>
+                    <option value="exam">Exam Fee</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Amount</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={paymentForm.amount}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, amount: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
+                  <select
+                    value={paymentForm.paymentMethod}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value as CoursePayment['paymentMethod'] })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="card">Card</option>
+                    <option value="transfer">Bank Transfer</option>
+                    <option value="cheque">Cheque</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Payment Date</label>
+                  <input
+                    type="date"
+                    value={paymentForm.paymentDate}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Voucher Number</label>
+                  <input
+                    type="text"
+                    value={paymentForm.voucherNumber}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, voucherNumber: e.target.value })}
+                    placeholder="Auto-generated if empty"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Received By</label>
+                  <input
+                    type="text"
+                    value={paymentForm.receivedBy}
+                    onChange={(e) => setPaymentForm({ ...paymentForm, receivedBy: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    required
+                  />
+                </div>
               </div>
-
+              
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Amount ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={paymentForm.amount}
-                  onChange={(e) => setPaymentForm({ 
-                    ...paymentForm, 
-                    amount: parseFloat(e.target.value) || 0 
-                  })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Payment Method</label>
-                <select
-                  value={paymentForm.paymentMethod}
-                  onChange={(e) => setPaymentForm({ 
-                    ...paymentForm, 
-                    paymentMethod: e.target.value as CoursePayment['paymentMethod'] 
-                  })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                  <option value="transfer">Bank Transfer</option>
-                  <option value="cheque">Cheque</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Description (Optional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
                 <textarea
                   value={paymentForm.description}
                   onChange={(e) => setPaymentForm({ ...paymentForm, description: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  rows={2}
+                  rows={3}
+                  placeholder="Optional payment description"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Received By</label>
-                <input
-                  type="text"
-                  value={paymentForm.receivedBy}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, receivedBy: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  required
-                />
-              </div>
+              {/* Payment Summary */}
+              {paymentForm.enrollmentId && (
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h4 className="font-medium text-green-900 mb-2">Payment Summary</h4>
+                  {(() => {
+                    const enrollment = enrollments.find(e => e.id === paymentForm.enrollmentId);
+                    const student = enrollment ? students.find(s => s.id === enrollment.studentId) : null;
+                    const course = enrollment ? courses.find(c => c.id === enrollment.courseId) : null;
+                    const batch = enrollment ? courseBatches.find(b => b.id === enrollment.batchId) : null;
+                    
+                    return enrollment && student && course && batch ? (
+                      <div className="text-sm space-y-1">
+                        <div>Student: {student.name}</div>
+                        <div>Course: {course.name}</div>
+                        <div>Batch: {batch.batchName}</div>
+                        <div>Total Fee: ${enrollment.totalFee.toFixed(2)}</div>
+                        <div>Paid Amount: ${enrollment.paidAmount.toFixed(2)}</div>
+                        <div>Remaining: ${enrollment.remainingAmount.toFixed(2)}</div>
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+              )}
 
               <div className="flex justify-end space-x-4 pt-4">
                 <button
                   type="button"
                   onClick={() => {
                     setShowPaymentForm(false);
-                    setShowPaymentModal(false);
-                    setSelectedEnrollment(null);
+                    setEditingPayment(null);
                     resetPaymentForm();
                   }}
                   className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -1725,7 +1497,7 @@ export function Courses() {
                   type="submit"
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
                 >
-                  Process Payment
+                  {editingPayment ? 'Update Payment' : 'Add Payment'}
                 </button>
               </div>
             </form>
